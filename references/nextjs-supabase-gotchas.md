@@ -145,3 +145,55 @@ Note the `Math.max(pct, 2)` — a real zero-or-near-zero data point should still
 ```
 
 **The verification lesson this exposes:** "verify by seeing it, not by inferring it" (see SKILL.md) has a sharp edge here — checking `getComputedStyle(el).position === 'sticky'` feels like seeing it, but it only confirms the CSS declaration parsed and applied, not that the *effect* the declaration is supposed to produce actually happens. The only real check is behavioral: change the scroll position (real user scroll, or `scrollContainer.scrollTop = N` in a script) and read the element's `getBoundingClientRect()` before and after. If the top coordinate keeps changing 1:1 with the scroll delta instead of clamping at the offset you set, it isn't actually sticking, no matter what the computed style says. This also means: when a user reports "the thing you fixed still doesn't work" on something you already "verified," don't reflexively assume the user is looking at a stale deploy or the wrong viewport — check whether your own verification actually exercised the effect, or just its precondition.
+
+## 9. A "runs globally across all tenants" batch function needs row locks once tests run concurrently against a shared DB
+
+**The mechanism:** a function meant to run as a cron job over every tenant's rows (e.g. generating this month's installments for every active contract, across every company) is correct for its real use case — nothing else touches those rows at 3am. But an integration suite that creates and deletes its own tenant's rows *in parallel*, against that same shared database, breaks the assumption: the function's `SELECT` can see a row that another test's transaction deletes before the function's `INSERT` commits. Because the batch runs as one atomic statement, the `INSERT`'s foreign-key check (which reads *current* state, not the `SELECT`'s snapshot) rejects that one row — and the whole statement aborts, including rows that had nothing to do with the deleted one. From the outside this looks like a cascading, intermittent failure across unrelated tests in the same file, reproducible only under full-suite load, never in isolation.
+
+**Fixed:**
+```sql
+-- before: plain SELECT, no protection against a concurrent delete
+select c.id, c.empresa_id, ... from contratos c where c.estado = 'Vigente' ...
+
+-- after: lock each candidate row before inserting its dependent row
+select c.id, c.empresa_id, ... from contratos c
+where c.estado = 'Vigente' ...
+for update of c
+```
+A concurrent `DELETE` on a locked row waits for this statement to finish; if the delete already committed before the lock was taken, the row simply doesn't appear in the `SELECT` at all — either way, no partial/rejected insert. No behavior change in the real, non-concurrent cron case.
+
+**Where to look for this:** any function that scans "all rows matching X" across tenants (not scoped to one caller) and then writes something derived from each row it finds, in a codebase whose test suite creates/deletes real rows in parallel against a shared local DB. Confirm with a targeted concurrency reproduction (N rows + their deletes fired in parallel against the old function, 0 failures against the fixed one under the same load) before trusting the fix — don't assume `for update` is the right lock target without proving the specific race actually goes away.
+
+## 10. Comparing a Postgres timestamp against a Node one, with zero tolerance, is flaky under load — not a real bug
+
+**The mechanism:** a test asserts `updated_at >= timestampCapturedBeforeTheRequest`. In practice these come from two different clocks in two different processes (Postgres's transaction-start `now()`, Node's `Date.now()`), and the real gap between them is normally a few milliseconds — comfortably positive in isolation. Running the full suite in parallel (many files competing for CPU against the same Docker-hosted database) shrinks that margin and occasionally pushes it negative for a few milliseconds, failing the assert on a genuinely correct update.
+
+**Fixed:** give the comparison a bounded tolerance sized to the real observed margin — not zero, and not so generous it stops catching an actual bug (a stale/null timestamp fails by seconds, or fails an earlier `toBeDefined()`, not by single-digit milliseconds):
+```ts
+expect(updatedAt.getTime()).toBeGreaterThan(before.getTime() - 1000); // 1s, not 0
+```
+Confirm it's really clock skew before widening any tolerance: reproduce under the same concurrent load that produced the original failure, and confirm the same test never fails run in isolation.
+
+## 11. A fixed-UTC-offset country's local time depends on each Postgres's own tzdata build — don't resolve it by zone name
+
+**The mechanism:** a named IANA zone (`'America/Asuncion'`, say) is resolved against the tzdata version compiled into that specific Postgres instance. When a country changes its rule (Paraguay fixed itself at UTC-3 year-round by law in Oct 2024, dropping DST), every Postgres still running an older tzdata build keeps computing the old rule — silently, no error, for exactly the months the old DST would have applied. A local dev container and a managed production Postgres can each run a different tzdata vintage and therefore disagree with each other, and neither necessarily matches what the app's Node process computes from its own, independently-updated tz database. This isn't a test flake — it's a real, silent wrong answer for real users during the affected months, and patching each environment's tzdata one at a time doesn't reach a managed production Postgres you don't control.
+
+**Fixed — stop resolving by zone name for a country with a fixed, known offset; convert explicitly instead:**
+```sql
+-- before: depends on this Postgres's tzdata build
+select (now() at time zone 'America/Asuncion')::date;
+
+-- after: fixed offset, independent of any tzdata table
+select ((now() at time zone 'UTC') - interval '3 hours')::date;
+```
+Applies to every function/view that derived a "local date" or "local hour" this way, not just the obvious ones — grep for the zone name across functions, views, and any report that buckets by day/hour.
+
+**Where to look for this:** a country whose current UTC offset is fixed and known (no DST) is safe to hardcode as an interval instead of resolving by name; a country that still observes DST cannot use this fix and needs its tzdata kept current on every Postgres instance instead — check which situation actually applies before hardcoding an offset.
+
+## 12. `overflow-x: auto` on a container silently sets `overflow-y` to `auto` too — enough to clip an absolutely-positioned child
+
+**The mechanism:** per the CSS Overflow spec, setting only one axis of `overflow` to something other than `visible` forces the *other* axis to resolve to `auto` as well, even though the stylesheet reads as if it were untouched. A container given `overflow-x-auto` purely for horizontal scroll (a wide table on mobile, say) quietly becomes a scroll/clip container on the vertical axis too — and any `position: absolute` descendant (a filter dropdown, a popover) that would normally escape a short parent by rendering past its bottom edge gets clipped at that parent's boundary instead. The effect only becomes visible once the parent is shorter than the popover needs — e.g. a table collapsed to a single "no results" row — so it sits unnoticed through review against normal-sized data.
+
+**Fixed — stop relying on the DOM ancestor for positioning at all:** render the popover in a portal to `document.body` with `position: fixed`, computing its position from the trigger's `getBoundingClientRect()` at open time, and close it on scroll/resize so it doesn't drift from its trigger. Click-outside detection then has to check both the trigger and the portaled panel explicitly, since they no longer share a DOM ancestor.
+
+**Where to look for this:** any absolutely-positioned popover/dropdown/tooltip nested inside a container that sets `overflow-x` (or `-y`) to anything but `visible` for an unrelated reason (horizontal scroll on a table, say) — the clip risk exists regardless of whether the popover has actually been clipped yet, since it only shows up once content happens to be shorter than usual.
