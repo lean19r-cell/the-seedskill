@@ -1,29 +1,50 @@
 ---
-name: multitenant-saas-playbook
-description: Engineering playbook for building and evolving a real, paying-customer-facing multi-tenant SaaS (Next.js + Supabase/Postgres + Tailwind + Vercel is the reference stack, but the lifecycle and diagnostic habits generalize). Use whenever shipping a feature or fix to a production web app that already has real users, whenever a user reports a UI bug that "looks completely broken," whenever doing a responsive/mobile pass on an existing app, whenever designing a system meant to serve multiple distinct businesses/tenants from one codebase, and whenever the user asks to turn accumulated lessons from a project into a reusable method. Push harder to consult this on anything touching git worktree lifecycle + push/merge authorization, Postgres RPC/RLS patterns, or "why does this look broken in production but tests are green."
+name: the-seedskill
+description: Use when building, fixing or evolving a production web app that already has real users, especially a multi-tenant SaaS (reference stack Next.js + Supabase/Postgres + Tailwind + Vercel). Use when a bug report, failing test or "it looks completely broken" report arrives; before proposing a fix; before claiming something is fixed, passing or done; before writing code for a new feature or behavior change; when writing or changing tests; when receiving or requesting code review; when deciding whether to push, merge or clean up a branch; when doing a responsive/mobile pass; when designing one codebase to serve several distinct businesses/tenants; and when asked to turn a project's lessons into a reusable method. Push harder to consult this on git worktree lifecycle and push/merge authorization, Postgres RPC/RLS patterns, and "broken in production but tests are green."
 ---
 
-# Multi-tenant SaaS playbook
+# The Seedskill
 
 ## Why this exists
 
-This captures the operating discipline that came out of actually shipping a multi-tenant restaurant/property-management SaaS solo, over many rounds of: build → user tries it for real → something's subtly wrong → find the *actual* mechanism → fix it → notice the same mechanism is probably lurking elsewhere → check. It is not a generic "how to code" guide — the generic pieces already live in other skills (see below). This is the specific residue: the gotchas that cost real debugging time, the design calls that turned out right, and the calls that had to be reversed after the user actually used the thing.
+This captures the operating discipline that came out of actually shipping a multi-tenant restaurant/property-management SaaS solo, over many rounds of: build → user tries it for real → something's subtly wrong → find the *actual* mechanism → fix it → notice the same mechanism is probably lurking elsewhere → check. It pairs a compact core of general engineering discipline (debugging, verification, testing, design gates, review) with the specific residue: the gotchas that cost real debugging time, the design calls that turned out right, and the calls that had to be reversed after the user actually used the thing.
 
 **Read `references/` files when the situation matches — don't preload them.**
-- `references/nextjs-supabase-gotchas.md` — concrete bug patterns in this stack, each with a broken/fixed code pair. Read this whenever you're debugging a "works locally, broken in prod" report, writing a Server Action, or touching a Postgres function that's already exposed via RPC.
-- `references/multitenant-architecture.md` — how to design one codebase that serves structurally different businesses (a restaurant POS and a property-rental manager, say) without forking. Read this when starting a new SaaS or when asked to add a second "vertical"/tenant-type to an existing one.
-- `references/responsive-design-method.md` — the breakpoint strategy and mockup-first process that actually survived contact with a real user testing on a real phone. Read this before a responsive/mobile pass, or when a UI change is visual enough that a mockup should come before code.
 
-## How this composes with other skills
+| When | Read |
+|---|---|
+| A bug, failing test or "looks broken" report arrives — and again right before you claim anything is fixed or done | `references/debugging-and-verification.md` — four-phase root-cause process, the three-fix rule, the verification gate |
+| Writing or changing a test, or fixing any bug | `references/testing-discipline.md` — red→green→refactor, tests that name the break, multi-tenant tests worth writing every time |
+| A request to build or change behavior (not a reported bug) | `references/design-plan-execute.md` — classify spike/bounded/architectural, approval gates, writing a plan, finishing a branch |
+| Review feedback arrives, a branch is about to be integrated, or several independent problems need work at once | `references/review-and-agents.md` — receiving/requesting review, parallel agents |
+| "Works locally, broken in prod", writing a Server Action, touching a Postgres function exposed via RPC | `references/nextjs-supabase-gotchas.md` — concrete bug patterns in this stack, each with a broken/fixed pair |
+| Starting a new SaaS, or adding a second vertical/tenant-type to an existing one | `references/multitenant-architecture.md` — one codebase for structurally different businesses without forking |
+| A responsive/mobile pass, or any UI change visual enough to deserve a mockup first | `references/responsive-design-method.md` — breakpoint strategy and mockup-first process |
 
-This playbook assumes you're already applying the general-purpose skills — it adds the domain-specific layer on top, and tightens a couple of things past their defaults:
+The first four are the general engineering discipline, adapted from [obra/superpowers](https://github.com/obra/superpowers) (MIT) so this skill stands on its own. The last three are the domain-specific residue from real production work.
 
-| Situation | Base skill | What this playbook adds |
+## The rules that don't bend
+
+1. **No fix without a root cause.** Reproduce and name the mechanism before touching code.
+2. **No "done" without fresh evidence.** Run the check in this turn, read the output, then claim — and for anything visual, look at the screen.
+3. **Logic gets its test first, and you watch it fail.** Every bug fix starts with a test that reproduces it.
+4. **No implementation before the design gate.** Classify the request, show the design at the size it deserves, wait for a yes.
+5. **Push and merge are separate, per-instance authorizations.**
+6. **After every fix, audit for the same shape** across the codebase.
+
+User instructions (CLAUDE.md, direct requests) take precedence over this skill; skip one of these rules only when the user has explicitly said to.
+
+## If you also have superpowers installed
+
+This skill is self-contained, but if the [superpowers](https://github.com/obra/superpowers) plugin is installed, its skills cover the general process in more depth. Use them for the *how*, and this skill for the stricter rules and the stack-specific layer:
+
+| Situation | superpowers skill | What this skill adds or tightens |
 |---|---|---|
-| Isolating work | `using-git-worktrees` | Nothing extra on *how* to create one — but see "Push and merge are separate, per-instance authorizations" below |
-| A bug report comes in | `systematic-debugging` | The stack-specific places root causes actually hide (see gotchas reference) — so Phase 1 evidence-gathering has somewhere concrete to look first |
-| Claiming a fix works | `verification-before-completion` | For a UI feature, green tests are necessary but not sufficient — see "Verify by seeing it" below |
-| Wrapping up a branch | `finishing-a-development-branch` | A stricter authorization rule for this kind of app — see below |
+| Starting a feature | `brainstorming`, `writing-plans` | Mockup-first for anything visual; the multi-tenant "review focus" inputs (empty tenant, lower role, phone viewport) |
+| Isolating work | `using-git-worktrees` | Never run a production build in the directory a dev server is using |
+| A bug report comes in | `systematic-debugging` | Where root causes actually hide in this stack (gotchas reference), so phase 1 has somewhere concrete to look |
+| Claiming a fix works | `verification-before-completion` | For UI, green tests are necessary but not sufficient — see "Verify by seeing it" |
+| Wrapping up a branch | `finishing-a-development-branch` | Push and merge are separate, per-instance authorizations |
 
 ## Push and merge are separate, per-instance authorizations
 
@@ -75,3 +96,8 @@ Don't undersell how far this goes: on one real project, fixing a single "can't a
 | "They asked for sticky, now they don't want it — I must have built it wrong" | Read it again: they're describing normal iteration, not a bug in your implementation. Ship the reversal. |
 | "I found one instance, that's the fix" | Grep for the same shape elsewhere before moving on — that's where most of the value is. |
 | "It compiled and the page loaded, good enough" | A blank chart or an invisible filter also "loads." Look at the actual pixels for anything visual. |
+| "The fix is obvious, I'll skip the investigation" | Seeing the symptom isn't understanding the mechanism. Reproduce and trace first — it's faster than thrashing. |
+| "One more fix attempt" (after two failed ones) | Three failed fixes means the architecture is wrong, not the hypothesis. Stop and discuss the design. |
+| "I'll write the test after it works" | A test you never saw fail proves nothing. Write it first, watch it fail. |
+| "It's too small to need a design" | Small means a two-sentence design in chat — then wait for the yes. The gate is the approval, not the length. |
+| "The agent/reviewer said it's done/right" | Read the diff yourself; verify the suggestion against the codebase before acting on it. |
