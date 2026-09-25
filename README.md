@@ -11,6 +11,8 @@ It captures the operating discipline that came out of actually shipping a multi-
 - [`references/testing-discipline.md`](references/testing-discipline.md) — red→green→refactor, tests that name the break they catch, and multi-tenant tests worth writing every time.
 - [`references/design-plan-execute.md`](references/design-plan-execute.md) — classifying a request (spike / bounded / architectural), approval gates, writing implementation plans, and finishing a branch.
 - [`references/review-and-agents.md`](references/review-and-agents.md) — receiving and requesting code review, and dispatching parallel agents.
+- [`references/safe-migrations.md`](references/safe-migrations.md) — schema changes without breaking the running app: expand→migrate→contract, RLS in the same migration, lock-safe DDL, backfills, backups before destructive changes.
+- [`references/multitenant-security.md`](references/multitenant-security.md) — the tenant-isolation checklist: never trusting tenant/role from the client, Server Actions as public endpoints, what bypasses RLS, storage, and cross-tenant tests.
 - [`references/nextjs-supabase-gotchas.md`](references/nextjs-supabase-gotchas.md) — concrete bug patterns in the Next.js/Supabase/Postgres stack, each with a broken/fixed code pair.
 - [`references/multitenant-architecture.md`](references/multitenant-architecture.md) — how to design one codebase that serves structurally different businesses without forking.
 - [`references/responsive-design-method.md`](references/responsive-design-method.md) — a breakpoint strategy and mockup-first process for retrofitting responsiveness onto an existing app.

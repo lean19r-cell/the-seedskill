@@ -1,6 +1,6 @@
 ---
 name: the-seedskill
-description: Use when building, fixing or evolving a production web app that already has real users, especially a multi-tenant SaaS (reference stack Next.js + Supabase/Postgres + Tailwind + Vercel). Use when a bug report, failing test or "it looks completely broken" report arrives; before proposing a fix; before claiming something is fixed, passing or done; before writing code for a new feature or behavior change; when writing or changing tests; when receiving or requesting code review; when deciding whether to push, merge or clean up a branch; when doing a responsive/mobile pass; when designing one codebase to serve several distinct businesses/tenants; and when asked to turn a project's lessons into a reusable method. Push harder to consult this on git worktree lifecycle and push/merge authorization, Postgres RPC/RLS patterns, and "broken in production but tests are green."
+description: Use when building, fixing or evolving a production web app that already has real users, especially a multi-tenant SaaS (reference stack Next.js + Supabase/Postgres + Tailwind + Vercel). Use when a bug report, failing test or "it looks completely broken" report arrives; before proposing a fix; before claiming something is fixed, passing or done; before writing code for a new feature or behavior change; when writing or changing tests; when receiving or requesting code review; when deciding whether to push, merge or clean up a branch; when writing or applying a database migration; when adding a table, RPC, Server Action or permission, or reviewing security; when doing a responsive/mobile pass; when designing one codebase to serve several distinct businesses/tenants; and when asked to turn a project's lessons into a reusable method. Push harder to consult this on push/merge authorization, migrations and Postgres RPC/RLS patterns, tenant isolation, and "broken in production but tests are green."
 ---
 
 # The Seedskill
@@ -17,11 +17,13 @@ This captures the operating discipline that came out of actually shipping a mult
 | Writing or changing a test, or fixing any bug | `references/testing-discipline.md` — red→green→refactor, tests that name the break, multi-tenant tests worth writing every time |
 | A request to build or change behavior (not a reported bug) | `references/design-plan-execute.md` — classify spike/bounded/architectural, approval gates, writing a plan, finishing a branch |
 | Review feedback arrives, a branch is about to be integrated, or several independent problems need work at once | `references/review-and-agents.md` — receiving/requesting review, parallel agents |
+| Writing or applying a migration: new table/column, changed RPC signature, RLS policy, index, backfill, anything destructive | `references/safe-migrations.md` — expand→migrate→contract, RLS in the same migration, lock-safe DDL, backups before destructive changes |
+| Shipping a new table, RPC, Server Action, route, bucket or permission change — or asked for a security review | `references/multitenant-security.md` — the tenant-isolation checklist: what bypasses RLS, public endpoints, cross-tenant tests |
 | "Works locally, broken in prod", writing a Server Action, touching a Postgres function exposed via RPC | `references/nextjs-supabase-gotchas.md` — concrete bug patterns in this stack, each with a broken/fixed pair |
 | Starting a new SaaS, or adding a second vertical/tenant-type to an existing one | `references/multitenant-architecture.md` — one codebase for structurally different businesses without forking |
 | A responsive/mobile pass, or any UI change visual enough to deserve a mockup first | `references/responsive-design-method.md` — breakpoint strategy and mockup-first process |
 
-The first four are the general engineering discipline, adapted from [obra/superpowers](https://github.com/obra/superpowers) (MIT) so this skill stands on its own. The last three are the domain-specific residue from real production work.
+The first four are the general engineering discipline, adapted from [obra/superpowers](https://github.com/obra/superpowers) (MIT) so this skill stands on its own. The rest are the domain-specific layer for this stack.
 
 ## The rules that don't bend
 
@@ -30,7 +32,9 @@ The first four are the general engineering discipline, adapted from [obra/superp
 3. **Logic gets its test first, and you watch it fail.** Every bug fix starts with a test that reproduces it.
 4. **No implementation before the design gate.** Classify the request, show the design at the size it deserves, wait for a yes.
 5. **Push and merge are separate, per-instance authorizations.**
-6. **After every fix, audit for the same shape** across the codebase.
+6. **The database is the tenant boundary.** Every new table ships with RLS in the same migration; `empresa_id` comes from the session, never from input.
+7. **Schema changes never break the running version.** Expand → migrate → contract; destructive steps only with a confirmed backup and an explicit yes.
+8. **After every fix, audit for the same shape** across the codebase.
 
 User instructions (CLAUDE.md, direct requests) take precedence over this skill; skip one of these rules only when the user has explicitly said to.
 
@@ -101,3 +105,5 @@ Don't undersell how far this goes: on one real project, fixing a single "can't a
 | "I'll write the test after it works" | A test you never saw fail proves nothing. Write it first, watch it fail. |
 | "It's too small to need a design" | Small means a two-sentence design in chat — then wait for the yes. The gate is the approval, not the length. |
 | "The agent/reviewer said it's done/right" | Read the diff yourself; verify the suggestion against the codebase before acting on it. |
+| "It's just a rename / one small column change, one migration is fine" | Open tabs still run the old code. Expand → migrate → contract, even for a rename. |
+| "RLS protects it" (about a view, a `security definer` RPC, or a service-role job) | Those bypass RLS. Check the tenant inside, or it's open to every tenant. |
