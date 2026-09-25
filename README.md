@@ -20,7 +20,7 @@ It captures the operating discipline that came out of actually shipping a multi-
 Clone it directly into your Claude Code skills folder:
 
 ```bash
-git clone https://github.com/lean19r-cell/multitenant-saas-playbook ~/.claude/skills/the-seedskill
+git clone https://github.com/lean19r-cell/the-seedskill ~/.claude/skills/the-seedskill
 ```
 
 On Windows, that's `%USERPROFILE%\.claude\skills\the-seedskill` (or `C:\Users\<you>\.claude\skills\the-seedskill`).
